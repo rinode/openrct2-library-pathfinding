@@ -19,6 +19,8 @@ npm install openrct2-library-pathfinding
 
 Requires `@openrct2/types` as a peer dependency.
 
+Depends on the [PathNavigator API](https://github.com/rinode/OpenRCT2/tree/feature/path-navigator), which is not yet merged into OpenRCT2. Use a build from that branch until it lands upstream.
+
 ## Usage
 
 ```typescript
