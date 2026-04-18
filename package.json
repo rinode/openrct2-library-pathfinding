@@ -1,0 +1,32 @@
+{
+  "name": "openrct2-library-pathfinding",
+  "version": "0.1.0",
+  "description": "Pathfinding algorithms for OpenRCT2 plugins (A*, Dijkstra, BFS, Greedy Best-First)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "rinode",
+  "license": "MIT",
+  "keywords": [
+    "openrct2",
+    "pathfinding",
+    "astar",
+    "dijkstra",
+    "bfs",
+    "plugin"
+  ],
+  "peerDependencies": {
+    "@openrct2/types": ">=0.5.0"
+  },
+  "devDependencies": {
+    "@openrct2/types": "0.5.0",
+    "typescript": "^5.7.0"
+  }
+}
