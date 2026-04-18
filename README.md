@@ -4,10 +4,10 @@ Pathfinding algorithms for OpenRCT2 plugins using the PathNavigator API.
 
 ## Algorithms
 
-- **A\*** — optimal, heuristic-guided
-- **Dijkstra** — optimal, no heuristic
-- **BFS** — unweighted shortest path
-- **Greedy Best-First** — fast, non-optimal
+- **A\***: optimal, heuristic-guided
+- **Dijkstra**: optimal, no heuristic
+- **BFS**: unweighted shortest path
+- **Greedy Best-First**: fast, non-optimal
 
 All algorithms are async and distribute work across game ticks via a configurable time budget.
 
