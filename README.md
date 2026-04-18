@@ -31,6 +31,7 @@ const result = await astar(startPos, endPos, 2); // 2ms per tick budget
 if (result.success) {
     console.log(`Path: ${result.path.length} tiles, ${result.nodesExplored} nodes explored`);
 }
+// => Path: 18 tiles, 42 nodes explored
 ```
 
 Or use the algorithm map with the enum:

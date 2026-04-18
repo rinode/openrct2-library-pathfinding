@@ -1,4 +1,5 @@
-export { PathfindingAlgorithm, PathfindingResult, PathfindingFunction } from "./types";
+export { PathfindingAlgorithm, PathfindingResult, PathfindingFunction, GuideResult, GuideResultStatus, GuideOptions, GuideProgressEvent } from "./types";
+export { guidePeep } from "./guide";
 export { astar } from "./astar";
 export { dijkstra } from "./dijkstra";
 export { bfs } from "./bfs";
