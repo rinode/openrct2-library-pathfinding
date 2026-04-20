@@ -1,11 +1,15 @@
-import { PathfindingFunction } from "./types";
-import { coordKey, reconstructPath, noPathResult, SearchNode } from "./utils";
+import { PathfindingFunction } from "../types";
+import { coordKey, reconstructPath, noPathResult, SearchNode } from "../utils";
+import { runOnGraph, GraphSearchMode } from "../graph";
 
 interface DijkstraNode extends SearchNode {
     g: number;
 }
 
-export const dijkstra: PathfindingFunction = (start, end, budgetMs) => {
+export const dijkstra: PathfindingFunction = (start, end, budgetMs, options) => {
+    if (options?.graph) {
+        return runOnGraph(start, end, options.graph, budgetMs, GraphSearchMode.Dijkstra);
+    }
     return new Promise((resolve) => {
         const startNav = map.getPathNavigator(start);
         const endNav = map.getPathNavigator(end);
@@ -25,7 +29,9 @@ export const dijkstra: PathfindingFunction = (start, end, budgetMs) => {
         const step = () => {
             ticks++;
             const deadline = Date.now() + budgetMs;
-            while (openSet.length > 0 && Date.now() < deadline) {
+            let firstIteration = true;
+            while (openSet.length > 0 && (firstIteration || Date.now() < deadline)) {
+                firstIteration = false;
                 let bestIdx = 0;
                 for (let j = 1; j < openSet.length; j++) {
                     if (openSet[j].g < openSet[bestIdx].g) bestIdx = j;

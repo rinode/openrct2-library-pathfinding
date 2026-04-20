@@ -1,7 +1,11 @@
-import { PathfindingFunction } from "./types";
-import { coordKey, reconstructPath, noPathResult, SearchNode } from "./utils";
+import { PathfindingFunction } from "../types";
+import { coordKey, reconstructPath, noPathResult, SearchNode } from "../utils";
+import { runOnGraph, GraphSearchMode } from "../graph";
 
-export const bfs: PathfindingFunction = (start, end, budgetMs) => {
+export const bfs: PathfindingFunction = (start, end, budgetMs, options) => {
+    if (options?.graph) {
+        return runOnGraph(start, end, options.graph, budgetMs, GraphSearchMode.BFS);
+    }
     return new Promise((resolve) => {
         const startNav = map.getPathNavigator(start);
         const endNav = map.getPathNavigator(end);
@@ -20,7 +24,9 @@ export const bfs: PathfindingFunction = (start, end, budgetMs) => {
         const step = () => {
             ticks++;
             const deadline = Date.now() + budgetMs;
-            while (queue.length > 0 && Date.now() < deadline) {
+            let firstIteration = true;
+            while (queue.length > 0 && (firstIteration || Date.now() < deadline)) {
+                firstIteration = false;
                 const current = queue.shift()!;
                 const currentKey = coordKey(current.pos);
                 nodesExplored++;

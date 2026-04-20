@@ -1,12 +1,16 @@
-import { PathfindingFunction } from "./types";
-import { coordKey, heuristic, reconstructPath, noPathResult, SearchNode } from "./utils";
+import { PathfindingFunction } from "../types";
+import { coordKey, heuristic, reconstructPath, noPathResult, SearchNode } from "../utils";
+import { runOnGraph, GraphSearchMode } from "../graph";
 
 interface AStarNode extends SearchNode {
     g: number;
     f: number;
 }
 
-export const astar: PathfindingFunction = (start, end, budgetMs) => {
+export const astar: PathfindingFunction = (start, end, budgetMs, options) => {
+    if (options?.graph) {
+        return runOnGraph(start, end, options.graph, budgetMs, GraphSearchMode.AStar);
+    }
     return new Promise((resolve) => {
         const startNav = map.getPathNavigator(start);
         const endNav = map.getPathNavigator(end);
@@ -26,7 +30,11 @@ export const astar: PathfindingFunction = (start, end, budgetMs) => {
         const step = () => {
             ticks++;
             const deadline = Date.now() + budgetMs;
-            while (openSet.length > 0 && Date.now() < deadline) {
+            // Always process at least one node per tick so a budget of 0
+            // still makes forward progress instead of looping forever.
+            let firstIteration = true;
+            while (openSet.length > 0 && (firstIteration || Date.now() < deadline)) {
+                firstIteration = false;
                 let bestIdx = 0;
                 for (let j = 1; j < openSet.length; j++) {
                     if (openSet[j].f < openSet[bestIdx].f) bestIdx = j;

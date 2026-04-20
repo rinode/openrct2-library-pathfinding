@@ -5,6 +5,16 @@ export enum PathfindingAlgorithm {
     Greedy = "Greedy Best-First",
 }
 
+export interface PathfindingOptions {
+    /**
+     * Optional precomputed junction graph. When supplied, the algorithm runs
+     * on the compressed graph instead of tile-by-tile, trading build cost for
+     * faster repeat queries on the same network. Largest effect on sparse
+     * networks with long corridors.
+     */
+    graph?: import("./graph").JunctionGraph;
+}
+
 export interface PathfindingResult {
     /** Ordered positions from start to end (inclusive). */
     path: CoordsXYZ[];
@@ -18,7 +28,12 @@ export interface PathfindingResult {
     ticks: number;
 }
 
-export type PathfindingFunction = (start: CoordsXYZ, end: CoordsXYZ, budgetMs: number) => Promise<PathfindingResult>;
+export type PathfindingFunction = (
+    start: CoordsXYZ,
+    end: CoordsXYZ,
+    budgetMs: number,
+    options?: PathfindingOptions,
+) => Promise<PathfindingResult>;
 
 export type GuideResultStatus =
     | "arrived"
