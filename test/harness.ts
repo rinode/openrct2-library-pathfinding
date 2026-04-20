@@ -8,18 +8,25 @@ type FakePathNavigator = {
     getConnectedPaths(): { position: CoordsXYZ }[];
 };
 
+type FakeTileElement = { type: string; baseZ: number };
+type FakeTile = { elements: FakeTileElement[]; getElement(i: number): FakeTileElement };
+
 type FakeMap = {
     getPathNavigator(pos: CoordsXYZ): FakePathNavigator | null;
+    getTile?(tx: number, ty: number): FakeTile;
 };
 
 type ActionListener = (e: { action: string; result: { error: number } }) => void;
+type TickListener = () => void;
 
 type FakeContext = {
     setTimeout(cb: () => void, _delay: number): number;
     subscribe(hook: "action.execute", cb: ActionListener): IDisposable;
+    subscribe(hook: "interval.tick", cb: TickListener): IDisposable;
     // Test-only helpers
     __flushTimers(): void;
     __fireAction(action: string, error?: number): void;
+    __fireTick(): void;
 };
 
 export interface Grid {
@@ -105,9 +112,35 @@ export function parseGrid(raw: string): Grid {
                 },
             };
         },
+        getTile(tx, ty) {
+            const pos: CoordsXYZ = { x: tx * 32, y: ty * 32, z: 0 };
+            const elements: FakeTileElement[] = tileSet.has(key(pos))
+                ? [{ type: "footpath", baseZ: 0 }]
+                : [];
+            return {
+                elements,
+                getElement(i: number) { return elements[i]; },
+            };
+        },
     };
 
     return { start, end, tiles, map };
+}
+
+// Minimal Peep stub for guidePeeps tests. Spreads peeps across the grid.
+export function makeFakePeep(id: number, pos: CoordsXYZ): any {
+    let cancelledPositionFrozen = false;
+    return {
+        id,
+        type: "guest",
+        x: pos.x + 16,
+        y: pos.y + 16,
+        z: pos.z + 8,
+        destination: { x: 0, y: 0 },
+        direction: 0,
+        setFlag(_flag: string, value: boolean) { cancelledPositionFrozen = value; },
+        getFlag(_flag: string) { return cancelledPositionFrozen; },
+    };
 }
 
 function key(p: CoordsXYZ): string {
@@ -118,6 +151,7 @@ function key(p: CoordsXYZ): string {
 export function installFakes(map: FakeMap): { context: FakeContext; dispose: () => void } {
     const pendingTimers: Array<() => void> = [];
     const actionListeners: ActionListener[] = [];
+    const tickListeners: TickListener[] = [];
 
     const context: FakeContext = {
         setTimeout(cb) {
@@ -132,14 +166,15 @@ export function installFakes(map: FakeMap): { context: FakeContext; dispose: () 
             });
             return 0;
         },
-        subscribe(_hook, cb) {
-            actionListeners.push(cb);
-            return {
-                dispose() {
-                    const i = actionListeners.indexOf(cb);
-                    if (i >= 0) actionListeners.splice(i, 1);
-                },
-            };
+        subscribe(hook: string, cb: ActionListener | TickListener): IDisposable {
+            if (hook === "interval.tick") {
+                const tcb = cb as TickListener;
+                tickListeners.push(tcb);
+                return { dispose() { const i = tickListeners.indexOf(tcb); if (i >= 0) tickListeners.splice(i, 1); } };
+            }
+            const acb = cb as ActionListener;
+            actionListeners.push(acb);
+            return { dispose() { const i = actionListeners.indexOf(acb); if (i >= 0) actionListeners.splice(i, 1); } };
         },
         __flushTimers() {
             while (pendingTimers.length > 0) {
@@ -148,6 +183,10 @@ export function installFakes(map: FakeMap): { context: FakeContext; dispose: () 
         },
         __fireAction(action, error = 0) {
             for (const l of actionListeners) l({ action, result: { error } });
+        },
+        __fireTick() {
+            // Copy: listeners may dispose themselves during tick.
+            for (const l of tickListeners.slice()) l();
         },
     };
 

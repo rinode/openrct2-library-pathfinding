@@ -57,12 +57,65 @@ export interface GuideProgressEvent {
 }
 
 export interface GuideOptions {
-    /** Max ticks to wait per waypoint before declaring stuck. Default: 120 (~4.8s at 25 tps). */
+    /**
+     * Upper bound on ticks at a single waypoint before declaring stuck,
+     * regardless of progress. Guards against a peep making infinitesimal
+     * progress forever. Default: 600 (~24s at 25 tps).
+     */
     waypointTimeoutTicks?: number;
+    /**
+     * Ticks of no forward progress (distance to waypoint not decreasing)
+     * before declaring stuck. Transient stalls (crowded paths, brief idle)
+     * reset this counter as soon as the peep makes progress again.
+     * Default: 120 (~4.8s at 25 tps).
+     */
+    noProgressTimeoutTicks?: number;
     /** Distance in game units to consider a waypoint reached. Default: 5. */
     arrivalThreshold?: number;
+    /**
+     * When true, log per-tick diagnostics for each guided peep (id, our
+     * target, peep.destination, peep.x/y, dist) and a one-line summary at
+     * the moment `stuck` fires showing whether `peep.destination` was
+     * overwritten by the native AI. Off by default — turn on only while
+     * investigating a stuck-storm.
+     */
+    debugStuck?: boolean;
     /** Called on each waypoint arrival. Return false to cancel. */
     onProgress?: (event: GuideProgressEvent) => boolean | void;
     /** Set cancelled to true to abort guidance. */
     cancelToken?: { readonly cancelled: boolean };
+}
+
+export type GuidePeepsResultStatus = GuideResultStatus | "no-path" | "no-start";
+
+export interface GuidePeepsPeepResult {
+    status: GuidePeepsResultStatus;
+    /** Index of the last waypoint reached, or -1 when no guiding happened. */
+    lastWaypointIndex: number;
+    /** Total game ticks elapsed during guidance (0 if guidance never started). */
+    elapsedTicks: number;
+}
+
+export interface GuidePeepsOptions {
+    /** Per-tick work budget in ms for each phase (graph build, Dijkstra, per-peep reconstruction). Default: 2. */
+    budgetMs?: number;
+    /** Set cancelled to true to abort the whole batch (and all in-flight guides). */
+    cancelToken?: { readonly cancelled: boolean };
+    /** Precomputed junction graph. Defaults to the shared module-level graph. */
+    graph?: import("./graph").JunctionGraph;
+    /** Called once per peep when that peep reaches a terminal state. */
+    onPeepResult?: (peep: Peep, result: GuidePeepsPeepResult) => void;
+}
+
+export interface GuidePeepsSummary {
+    /** Peeps handed off to guidePeep (i.e. had a valid path). */
+    dispatched: number;
+    arrived: number;
+    stuck: number;
+    removed: number;
+    cancelled: number;
+    /** Peeps on the same island as dest but no path exists (one-way banners etc). */
+    noPath: number;
+    /** Peeps not standing on a footpath tile. */
+    noStart: number;
 }

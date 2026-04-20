@@ -12,7 +12,7 @@
 // force a rebuild manually.
 
 import { PathfindingResult } from "./types";
-import { coordKey, heuristic, noPathResult } from "./utils";
+import { coordKey, heuristic, noPathResult, TickBudget } from "./utils";
 
 export interface CorridorEdge {
     /** coordKey of the destination junction. */
@@ -30,11 +30,13 @@ export interface JunctionNode {
 
 export class JunctionGraph {
     private nodes = new Map<string, JunctionNode>();
-    /** Every tile in a built component → coordKey of one bordering junction (or itself). */
+    /** Every tile in a built component → seedKey of the component it belongs to. */
     private tileToComponent = new Map<string, string>();
     /** For mid-corridor tiles: both bordering junctions and the tile's offset from source. */
     private corridorIndex = new Map<string, { sourceKey: string; edge: CorridorEdge; offset: number }>();
     private builtSeeds = new Set<string>();
+    /** Lazy: for each junction Y, the list of incoming edges (X, X→Y edge). */
+    private reverseAdjCache: Map<string, Array<{ fromKey: string; edge: CorridorEdge }>> | null = null;
 
     get junctionCount(): number {
         return this.nodes.size;
@@ -48,6 +50,16 @@ export class JunctionGraph {
         return this.nodes.get(key);
     }
 
+    /** Tag identifying which component the given tile belongs to, or undefined if not indexed. */
+    componentKeyOf(pos: CoordsXYZ): string | undefined {
+        return this.tileToComponent.get(coordKey(pos));
+    }
+
+    /** Iterate every junction as [key, node] pairs. */
+    entries(): IterableIterator<[string, JunctionNode]> {
+        return this.nodes.entries();
+    }
+
     getJunctionPositions(): CoordsXYZ[] {
         const out: CoordsXYZ[] = [];
         for (const node of this.nodes.values()) out.push(node.pos);
@@ -59,11 +71,30 @@ export class JunctionGraph {
         return this.corridorIndex.get(coordKey(pos));
     }
 
+    /** For each junction Y, the list of (fromKey, X→Y edge). Built once, cached until invalidation. */
+    getReverseAdjacency(): Map<string, Array<{ fromKey: string; edge: CorridorEdge }>> {
+        if (this.reverseAdjCache) return this.reverseAdjCache;
+        const rev = new Map<string, Array<{ fromKey: string; edge: CorridorEdge }>>();
+        for (const [fromKey, node] of this.nodes) {
+            for (const edge of node.edges) {
+                let list = rev.get(edge.toKey);
+                if (!list) {
+                    list = [];
+                    rev.set(edge.toKey, list);
+                }
+                list.push({ fromKey, edge });
+            }
+        }
+        this.reverseAdjCache = rev;
+        return rev;
+    }
+
     invalidate(): void {
         this.nodes.clear();
         this.tileToComponent.clear();
         this.corridorIndex.clear();
         this.builtSeeds.clear();
+        this.reverseAdjCache = null;
     }
 
     /**
@@ -80,8 +111,11 @@ export class JunctionGraph {
 
         const budget = new TickBudget(budgetMs);
 
-        // Phase 1: discover every tile in the component and record its
-        // outgoing connections.
+        // Phase 1: discover every footpath tile reachable from `seed` using
+        // undirected Manhattan connectivity — we want the whole weakly
+        // connected network, not just tiles reachable along directed edges.
+        // Record outgoing (directed) connections for later junction
+        // classification.
         const tiles = new Map<string, { pos: CoordsXYZ; outgoing: CoordsXYZ[] }>();
         const queue: CoordsXYZ[] = [seed];
         tiles.set(seedKey, { pos: seed, outgoing: [] });
@@ -102,6 +136,26 @@ export class JunctionGraph {
                 }
             }
             tiles.get(k)!.outgoing = outgoing;
+
+            // Also enqueue any cardinally-adjacent footpath whose own
+            // getConnectedPaths includes us. Our outgoing may not list them
+            // back (one-way banners), but we belong to the same network.
+            const cardinals = [
+                { x: pos.x + 32, y: pos.y, z: pos.z },
+                { x: pos.x - 32, y: pos.y, z: pos.z },
+                { x: pos.x, y: pos.y + 32, z: pos.z },
+                { x: pos.x, y: pos.y - 32, z: pos.z },
+            ];
+            for (const candidate of cardinals) {
+                const candKey = coordKey(candidate);
+                if (tiles.has(candKey)) continue;
+                const candNav = map.getPathNavigator(candidate);
+                if (!candNav) continue;
+                if (candNav.getConnectedPaths().some((c) => coordKey(c.position) === k)) {
+                    tiles.set(candKey, { pos: candidate, outgoing: [] });
+                    queue.push(candidate);
+                }
+            }
         }
 
         // Phase 2: classify junctions. A tile is a junction if its degree
@@ -158,11 +212,13 @@ export class JunctionGraph {
             this.nodes.set(jKey, node);
         }
 
-        // Phase 4: index every tile in the component.
+        // Phase 4: index every tile in the component with the seedKey tag so
+        // componentKeyOf(A) === componentKeyOf(B) iff A and B are in the same
+        // component. Junctions and corridor tiles share the same tag.
         n = 0;
         for (const k of tiles.keys()) {
             if ((n++ & 0xFF) === 0) await budget.maybeYield();
-            this.tileToComponent.set(k, junctionKeys.has(k) ? k : seedKey);
+            this.tileToComponent.set(k, seedKey);
         }
         for (const [jKey, jNode] of this.nodes) {
             await budget.maybeYield();
@@ -180,22 +236,8 @@ export class JunctionGraph {
         }
 
         this.builtSeeds.add(seedKey);
-    }
-}
-
-class TickBudget {
-    private deadline: number;
-    constructor(private budgetMs: number) {
-        this.deadline = Date.now() + budgetMs;
-    }
-    maybeYield(): Promise<void> | void {
-        if (Date.now() < this.deadline) return;
-        return new Promise<void>((resolve) => {
-            context.setTimeout(() => {
-                this.deadline = Date.now() + this.budgetMs;
-                resolve();
-            }, 0);
-        });
+        // New nodes were added; any cached reverse adjacency is stale.
+        this.reverseAdjCache = null;
     }
 }
 
@@ -376,7 +418,7 @@ async function astarLikeOnGraph(
     return { path: [], nodesExplored, success: false, elapsedMs: Date.now() - startTime, ticks: 1 };
 }
 
-interface AnchorInfo {
+export interface AnchorInfo {
     junctionKey: string;
     junctionPos: CoordsXYZ;
     /** Tiles to walk from `start` to this junction (excluding start, including the junction). */
@@ -385,7 +427,7 @@ interface AnchorInfo {
     cost: number;
 }
 
-function resolveAnchors(pos: CoordsXYZ, graph: JunctionGraph): AnchorInfo[] | null {
+export function resolveAnchors(pos: CoordsXYZ, graph: JunctionGraph): AnchorInfo[] | null {
     const k = coordKey(pos);
     const node = graph.getNode(k);
     if (node) {
@@ -426,24 +468,34 @@ function resolveAnchors(pos: CoordsXYZ, graph: JunctionGraph): AnchorInfo[] | nu
     ];
 }
 
-function tryDirectCorridorPath(start: CoordsXYZ, end: CoordsXYZ, graph: JunctionGraph): CoordsXYZ[] | null {
-    const startInfo = graph.getCorridorInfo(start);
-    const endInfo = graph.getCorridorInfo(end);
-    if (!startInfo || !endInfo) return null;
-    if (startInfo.edge !== endInfo.edge) return null;
+export function tryDirectCorridorPath(start: CoordsXYZ, end: CoordsXYZ, graph: JunctionGraph): CoordsXYZ[] | null {
+    const startKey = coordKey(start);
+    const endKey = coordKey(end);
+    if (startKey === endKey) return [start];
 
-    // edge.tilesFromSource[offset - 1] is the tile at that offset.
-    const sIdx = startInfo.offset - 1;
-    const eIdx = endInfo.offset - 1;
-    if (sIdx === eIdx) return [start];
-    if (sIdx > eIdx) {
-        // Reverse walk along a directed corridor isn't safe (one-way banner).
-        // Fall back to junction search.
-        return null;
+    // Scan edges to find one that contains both start and end as tiles, with
+    // start appearing earlier in the edge's source-to-destination ordering.
+    // corridorIndex may point to the reverse edge for either tile, so the
+    // lookup there isn't sufficient on its own.
+    //
+    // Edge ordering: source is position 0, tilesFromSource[i] is position i+1.
+    for (const [fromKey, node] of graph.entries()) {
+        for (const edge of node.edges) {
+            let sPos = fromKey === startKey ? 0 : -1;
+            let ePos = fromKey === endKey ? 0 : -1;
+            for (let i = 0; i < edge.tilesFromSource.length; i++) {
+                const tk = coordKey(edge.tilesFromSource[i]);
+                if (tk === startKey) sPos = i + 1;
+                if (tk === endKey) ePos = i + 1;
+            }
+            if (sPos < 0 || ePos < 0) continue;
+            if (sPos >= ePos) continue;
+            const out: CoordsXYZ[] = [start];
+            for (let i = sPos; i < ePos; i++) out.push(edge.tilesFromSource[i]);
+            return out;
+        }
     }
-    const out: CoordsXYZ[] = [];
-    for (let i = sIdx; i <= eIdx; i++) out.push(startInfo.edge.tilesFromSource[i]);
-    return out;
+    return null;
 }
 
 function reconstructTilePath(
@@ -521,4 +573,195 @@ export function runOnGraph(
             break;
     }
     return astarLikeOnGraph(start, end, graph, budgetMs, opts);
+}
+
+// Many-to-one path computation: reverse Dijkstra from a shared destination.
+//
+// Used by guidePeeps() to amortize N peep queries into a single graph search.
+// The predecessor map produced here lets any junction in dest's component
+// reconstruct its tile-by-tile path to dest in O(path length) time.
+
+export interface DestAnchor {
+    junctionKey: string;
+    junctionPos: CoordsXYZ;
+    /** Tile hops from this junction to dest. */
+    cost: number;
+    /** Tiles from the junction's first step along the anchor edge up to and including dest. */
+    tailToDest: CoordsXYZ[];
+}
+
+/**
+ * Find every junction that directly reaches `dest` and the cost to do so.
+ * If dest is itself a junction, the only anchor is dest with cost 0.
+ * Otherwise, scan edges that pass through dest (at most two, for two-way corridors).
+ */
+export function resolveDestAnchors(dest: CoordsXYZ, graph: JunctionGraph): DestAnchor[] {
+    const destKey = coordKey(dest);
+    const directNode = graph.getNode(destKey);
+    if (directNode) {
+        return [{ junctionKey: destKey, junctionPos: directNode.pos, cost: 0, tailToDest: [] }];
+    }
+    const anchors: DestAnchor[] = [];
+    for (const [fromKey, node] of graph.entries()) {
+        for (const edge of node.edges) {
+            for (let i = 0; i < edge.tilesFromSource.length; i++) {
+                if (coordKey(edge.tilesFromSource[i]) === destKey) {
+                    anchors.push({
+                        junctionKey: fromKey,
+                        junctionPos: node.pos,
+                        cost: i + 1,
+                        tailToDest: edge.tilesFromSource.slice(0, i + 1),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    return anchors;
+}
+
+export interface PredecessorEntry {
+    /** Tile hops from this junction to dest. */
+    distToDest: number;
+    /** Next junction on the way to dest; empty string for terminal (direct-anchor) junctions. */
+    nextKey: string;
+    /** The forward edge from this junction to nextKey. null for terminal anchors. */
+    forwardEdge: CorridorEdge | null;
+    /** For terminal anchors: pre-computed tail tiles from this junction's first step to dest. */
+    tailToDest: CoordsXYZ[] | null;
+}
+
+class MinHeap<T> {
+    private data: T[] = [];
+    constructor(private cmp: (a: T, b: T) => number) {}
+    get size(): number { return this.data.length; }
+    push(v: T): void {
+        this.data.push(v);
+        this.bubbleUp(this.data.length - 1);
+    }
+    pop(): T | undefined {
+        if (this.data.length === 0) return undefined;
+        const top = this.data[0];
+        const last = this.data.pop()!;
+        if (this.data.length > 0) {
+            this.data[0] = last;
+            this.sinkDown(0);
+        }
+        return top;
+    }
+    private bubbleUp(i: number): void {
+        while (i > 0) {
+            const p = (i - 1) >> 1;
+            if (this.cmp(this.data[i], this.data[p]) >= 0) return;
+            [this.data[i], this.data[p]] = [this.data[p], this.data[i]];
+            i = p;
+        }
+    }
+    private sinkDown(i: number): void {
+        const n = this.data.length;
+        while (true) {
+            const l = i * 2 + 1;
+            const r = l + 1;
+            let smallest = i;
+            if (l < n && this.cmp(this.data[l], this.data[smallest]) < 0) smallest = l;
+            if (r < n && this.cmp(this.data[r], this.data[smallest]) < 0) smallest = r;
+            if (smallest === i) return;
+            [this.data[i], this.data[smallest]] = [this.data[smallest], this.data[i]];
+            i = smallest;
+        }
+    }
+}
+
+/**
+ * Reverse Dijkstra from dest anchors over the junction graph. Returns a
+ * predecessor map covering every junction that can reach dest. Cost = total
+ * tile hops. Tick-distributed via the shared budget.
+ */
+export async function reverseDijkstraFromDest(
+    graph: JunctionGraph,
+    destAnchors: DestAnchor[],
+    budgetMs: number = 2,
+    cancelToken?: { readonly cancelled: boolean },
+): Promise<Map<string, PredecessorEntry>> {
+    const predecessors = new Map<string, PredecessorEntry>();
+    if (destAnchors.length === 0) return predecessors;
+
+    const reverseAdj = graph.getReverseAdjacency();
+    const heap = new MinHeap<{ key: string; dist: number }>((a, b) => a.dist - b.dist);
+    const budget = new TickBudget(budgetMs);
+
+    for (const a of destAnchors) {
+        const existing = predecessors.get(a.junctionKey);
+        if (existing && existing.distToDest <= a.cost) continue;
+        predecessors.set(a.junctionKey, {
+            distToDest: a.cost,
+            nextKey: "",
+            forwardEdge: null,
+            tailToDest: a.tailToDest,
+        });
+        heap.push({ key: a.junctionKey, dist: a.cost });
+    }
+
+    let counter = 0;
+    while (heap.size > 0) {
+        if ((counter++ & 0x3FF) === 0) {
+            await budget.maybeYield();
+            if (cancelToken?.cancelled) return predecessors;
+        }
+        const top = heap.pop()!;
+        const pred = predecessors.get(top.key);
+        if (!pred || pred.distToDest !== top.dist) continue;
+
+        const incoming = reverseAdj.get(top.key);
+        if (!incoming) continue;
+        for (const inc of incoming) {
+            const newDist = top.dist + inc.edge.length;
+            const existing = predecessors.get(inc.fromKey);
+            if (existing && existing.distToDest <= newDist) continue;
+            predecessors.set(inc.fromKey, {
+                distToDest: newDist,
+                nextKey: top.key,
+                forwardEdge: inc.edge,
+                tailToDest: null,
+            });
+            heap.push({ key: inc.fromKey, dist: newDist });
+        }
+    }
+
+    return predecessors;
+}
+
+/**
+ * Expand the junction-to-dest tile sequence starting from a chosen junction.
+ * Returns tiles AFTER the start junction, ending with dest.
+ * Returns an empty array when startJunctionKey is a terminal anchor whose
+ * tailToDest is empty (i.e. the junction IS dest).
+ */
+export function reconstructTailToDest(
+    startJunctionKey: string,
+    predecessors: Map<string, PredecessorEntry>,
+    dest: CoordsXYZ,
+): CoordsXYZ[] {
+    const out: CoordsXYZ[] = [];
+    let cur = startJunctionKey;
+    const destKey = coordKey(dest);
+    // Safety bound against pathological maps; graph diameter is the worst case.
+    let safety = predecessors.size + 2;
+    while (safety-- > 0) {
+        const pred = predecessors.get(cur);
+        if (!pred) break;
+        if (pred.forwardEdge) {
+            for (const t of pred.forwardEdge.tilesFromSource) out.push(t);
+            cur = pred.nextKey;
+            continue;
+        }
+        if (pred.tailToDest) {
+            for (const t of pred.tailToDest) out.push(t);
+        }
+        break;
+    }
+    if (out.length === 0 || coordKey(out[out.length - 1]) !== destKey) {
+        out.push(dest);
+    }
+    return out;
 }

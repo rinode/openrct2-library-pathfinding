@@ -26,3 +26,19 @@ export function reconstructPath(node: SearchNode): CoordsXYZ[] {
 export function noPathResult(): PathfindingResult {
     return { path: [], nodesExplored: 0, success: false, elapsedMs: 0, ticks: 0 };
 }
+
+export class TickBudget {
+    private deadline: number;
+    constructor(private budgetMs: number) {
+        this.deadline = Date.now() + budgetMs;
+    }
+    maybeYield(): Promise<void> | void {
+        if (Date.now() < this.deadline) return;
+        return new Promise<void>((resolve) => {
+            context.setTimeout(() => {
+                this.deadline = Date.now() + this.budgetMs;
+                resolve();
+            }, 0);
+        });
+    }
+}
