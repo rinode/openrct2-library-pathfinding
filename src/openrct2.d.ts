@@ -4,10 +4,10 @@ interface PathConnection {
 }
 
 interface PathNavigator {
-    position: CoordsXYZ;
+    current: PathConnection;
     getConnectedPaths(): PathConnection[];
 }
 
 interface GameMap {
-    getPathNavigatorAt(position: CoordsXYZ): PathNavigator | null;
+    getPathNavigator(position: CoordsXYZ): PathNavigator | null;
 }

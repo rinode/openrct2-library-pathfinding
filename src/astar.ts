@@ -8,8 +8,8 @@ interface AStarNode extends SearchNode {
 
 export const astar: PathfindingFunction = (start, end, budgetMs) => {
     return new Promise((resolve) => {
-        const startNav = map.getPathNavigatorAt(start);
-        const endNav = map.getPathNavigatorAt(end);
+        const startNav = map.getPathNavigator(start);
+        const endNav = map.getPathNavigator(end);
         if (!startNav || !endNav) { resolve(noPathResult()); return; }
 
         const endKey = coordKey(end);
@@ -43,7 +43,7 @@ export const astar: PathfindingFunction = (start, end, budgetMs) => {
                 closedSet.add(currentKey);
                 nodesExplored++;
 
-                const nav = map.getPathNavigatorAt(current.pos);
+                const nav = map.getPathNavigator(current.pos);
                 if (!nav) continue;
 
                 for (const conn of nav.getConnectedPaths()) {
