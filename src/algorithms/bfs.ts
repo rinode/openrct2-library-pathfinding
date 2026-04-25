@@ -6,9 +6,10 @@ export const bfs: PathfindingFunction = (start, end, budgetMs, options) => {
     if (options?.graph) {
         return runOnGraph(start, end, options.graph, budgetMs, GraphSearchMode.BFS);
     }
+    const pathOptions = options?.pathOptions;
     return new Promise((resolve) => {
-        const startNav = map.getPathNavigator(start);
-        const endNav = map.getPathNavigator(end);
+        const startNav = map.getPathNavigator(start, pathOptions);
+        const endNav = map.getPathNavigator(end, pathOptions);
         if (!startNav || !endNav) { resolve(noPathResult()); return; }
 
         const endKey = coordKey(end);
@@ -36,7 +37,7 @@ export const bfs: PathfindingFunction = (start, end, budgetMs, options) => {
                     return;
                 }
 
-                const nav = map.getPathNavigator(current.pos);
+                const nav = map.getPathNavigator(current.pos, pathOptions);
                 if (!nav) continue;
 
                 for (const conn of nav.getConnectedPaths()) {

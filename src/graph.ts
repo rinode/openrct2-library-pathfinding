@@ -11,8 +11,24 @@
 // banner-mutating action executes successfully. Call invalidateGraph() to
 // force a rebuild manually.
 
-import { PathfindingResult } from "./types";
+import { PathfindingResult, PathNavigationOptions } from "./types";
 import { coordKey, heuristic, noPathResult, TickBudget } from "./utils";
+
+function normalizeOptions(o?: PathNavigationOptions): PathNavigationOptions {
+    return {
+        respectBanners: o?.respectBanners ?? false,
+        excludeGhosts: o?.excludeGhosts ?? false,
+        excludeQueues: o?.excludeQueues ?? false,
+        excludeWidePaths: o?.excludeWidePaths ?? false,
+    };
+}
+
+function optionsEqual(a: PathNavigationOptions, b: PathNavigationOptions): boolean {
+    return a.respectBanners === b.respectBanners
+        && a.excludeGhosts === b.excludeGhosts
+        && a.excludeQueues === b.excludeQueues
+        && a.excludeWidePaths === b.excludeWidePaths;
+}
 
 export interface CorridorEdge {
     /** coordKey of the destination junction. */
@@ -37,6 +53,16 @@ export class JunctionGraph {
     private builtSeeds = new Set<string>();
     /** Lazy: for each junction Y, the list of incoming edges (X, X→Y edge). */
     private reverseAdjCache: Map<string, Array<{ fromKey: string; edge: CorridorEdge }>> | null = null;
+    /** Path navigation rules used when building this graph. Bound at construction time. */
+    private readonly _options: PathNavigationOptions;
+
+    constructor(options?: PathNavigationOptions) {
+        this._options = normalizeOptions(options);
+    }
+
+    get options(): PathNavigationOptions {
+        return this._options;
+    }
 
     get junctionCount(): number {
         return this.nodes.size;
@@ -106,7 +132,7 @@ export class JunctionGraph {
         const seedKey = coordKey(seed);
         if (this.builtSeeds.has(seedKey) || this.tileToComponent.has(seedKey)) return;
 
-        const seedNav = map.getPathNavigator(seed);
+        const seedNav = map.getPathNavigator(seed, this._options);
         if (!seedNav) return;
 
         const budget = new TickBudget(budgetMs);
@@ -124,7 +150,7 @@ export class JunctionGraph {
             await budget.maybeYield();
             const pos = queue.shift()!;
             const k = coordKey(pos);
-            const nav = map.getPathNavigator(pos);
+            const nav = map.getPathNavigator(pos, this._options);
             if (!nav) continue;
             const outgoing: CoordsXYZ[] = [];
             for (const c of nav.getConnectedPaths()) {
@@ -149,7 +175,7 @@ export class JunctionGraph {
             for (const candidate of cardinals) {
                 const candKey = coordKey(candidate);
                 if (tiles.has(candKey)) continue;
-                const candNav = map.getPathNavigator(candidate);
+                const candNav = map.getPathNavigator(candidate, this._options);
                 if (!candNav) continue;
                 if (candNav.getConnectedPaths().some((c) => coordKey(c.position) === k)) {
                     tiles.set(candKey, { pos: candidate, outgoing: [] });
@@ -266,16 +292,27 @@ function ensureSubscription(): void {
     });
 }
 
-/** Returns the shared module-level graph, creating it (and the action subscription) on first use. */
-export function getDefaultGraph(): JunctionGraph {
-    if (!defaultGraph) defaultGraph = new JunctionGraph();
+/**
+ * Returns the shared module-level graph, creating it (and the action subscription) on first use.
+ * If `options` is provided and differs from the cached graph's options, the
+ * existing graph is replaced — the graph topology depends on which tiles are
+ * traversable, so two option sets cannot share one cache.
+ */
+export function getDefaultGraph(options?: PathNavigationOptions): JunctionGraph {
+    const desired = normalizeOptions(options);
+    if (defaultGraph && !optionsEqual(defaultGraph.options, desired)) {
+        defaultGraph = null;
+    }
+    if (!defaultGraph) defaultGraph = new JunctionGraph(desired);
     ensureSubscription();
     return defaultGraph;
 }
 
 /** Convenience: build (or refresh) the component containing `seed` on the default graph. */
-export async function buildGraph(seed: CoordsXYZ, budgetMs: number = 4): Promise<JunctionGraph> {
-    const g = getDefaultGraph();
+export async function buildGraph(
+    seed: CoordsXYZ, budgetMs: number = 4, options?: PathNavigationOptions,
+): Promise<JunctionGraph> {
+    const g = getDefaultGraph(options);
     await g.buildComponentFrom(seed, budgetMs);
     return g;
 }

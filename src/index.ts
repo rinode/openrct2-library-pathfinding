@@ -1,5 +1,6 @@
 export {
     PathfindingAlgorithm, PathfindingResult, PathfindingFunction, PathfindingOptions,
+    PathNavigationOptions,
     GuideResult, GuideResultStatus, GuideOptions, GuideProgressEvent,
     GuidePeepsOptions, GuidePeepsPeepResult, GuidePeepsResultStatus, GuidePeepsSummary,
 } from "./types";

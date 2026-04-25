@@ -5,6 +5,7 @@ import {
     GuidePeepsOptions,
     GuidePeepsPeepResult,
     GuidePeepsSummary,
+    PathNavigationOptions,
 } from "./types";
 import {
     JunctionGraph,
@@ -190,6 +191,7 @@ export interface PeepPathPlan {
 export interface PlanPeepPathsOptions {
     budgetMs?: number;
     graph?: JunctionGraph;
+    pathOptions?: PathNavigationOptions;
     cancelToken?: { readonly cancelled: boolean };
 }
 
@@ -207,7 +209,7 @@ export async function planPeepPaths(
 ): Promise<PeepPathPlan[]> {
     const budgetMs = options?.budgetMs ?? 2;
     const cancelToken = options?.cancelToken;
-    const graph = options?.graph ?? getDefaultGraph();
+    const graph = options?.graph ?? getDefaultGraph(options?.pathOptions);
 
     // Phase 1: ensure dest's component is built.
     await graph.buildComponentFrom(dest, budgetMs);
@@ -330,6 +332,7 @@ export async function guidePeeps(
     const plans = await planPeepPaths(peeps, dest, {
         budgetMs: options?.budgetMs,
         graph: options?.graph,
+        pathOptions: options?.pathOptions,
         cancelToken,
     });
 

@@ -5,6 +5,18 @@ export enum PathfindingAlgorithm {
     Greedy = "Greedy Best-First",
 }
 
+/**
+ * Re-export of the upstream PathNavigationOptions shape so callers don't need
+ * an ambient global. Each option is opt-in: a missing or false value preserves
+ * the navigator's default loose behavior.
+ */
+export interface PathNavigationOptions {
+    respectBanners?: boolean;
+    excludeGhosts?: boolean;
+    excludeQueues?: boolean;
+    excludeWidePaths?: boolean;
+}
+
 export interface PathfindingOptions {
     /**
      * Optional precomputed junction graph. When supplied, the algorithm runs
@@ -13,6 +25,13 @@ export interface PathfindingOptions {
      * networks with long corridors.
      */
     graph?: import("./graph").JunctionGraph;
+
+    /**
+     * Path navigation rules forwarded to {@link map.getPathNavigator} for
+     * every neighbor query. When using `graph`, the graph must have been built
+     * with the same options or results will not match this query's rules.
+     */
+    pathOptions?: PathNavigationOptions;
 }
 
 export interface PathfindingResult {
@@ -103,6 +122,8 @@ export interface GuidePeepsOptions {
     cancelToken?: { readonly cancelled: boolean };
     /** Precomputed junction graph. Defaults to the shared module-level graph. */
     graph?: import("./graph").JunctionGraph;
+    /** Path navigation rules used when building/walking the graph. */
+    pathOptions?: PathNavigationOptions;
     /** Called once per peep when that peep reaches a terminal state. */
     onPeepResult?: (peep: Peep, result: GuidePeepsPeepResult) => void;
 }
