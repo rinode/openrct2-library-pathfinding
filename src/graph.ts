@@ -17,17 +17,17 @@ import { coordKey, heuristic, noPathResult, TickBudget } from "./utils";
 function normalizeOptions(o?: PathNavigationOptions): PathNavigationOptions {
     return {
         respectBanners: o?.respectBanners ?? false,
-        excludeGhosts: o?.excludeGhosts ?? false,
-        excludeQueues: o?.excludeQueues ?? false,
-        excludeWidePaths: o?.excludeWidePaths ?? false,
+        includeGhosts: o?.includeGhosts ?? false,
+        includeQueues: o?.includeQueues ?? false,
+        includeWidePaths: o?.includeWidePaths ?? false,
     };
 }
 
 function optionsEqual(a: PathNavigationOptions, b: PathNavigationOptions): boolean {
     return a.respectBanners === b.respectBanners
-        && a.excludeGhosts === b.excludeGhosts
-        && a.excludeQueues === b.excludeQueues
-        && a.excludeWidePaths === b.excludeWidePaths;
+        && a.includeGhosts === b.includeGhosts
+        && a.includeQueues === b.includeQueues
+        && a.includeWidePaths === b.includeWidePaths;
 }
 
 export interface CorridorEdge {

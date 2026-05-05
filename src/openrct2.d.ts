@@ -10,9 +10,9 @@ interface PathNavigator {
 
 interface PathNavigationOptions {
     respectBanners?: boolean;
-    excludeGhosts?: boolean;
-    excludeQueues?: boolean;
-    excludeWidePaths?: boolean;
+    includeGhosts?: boolean;
+    includeQueues?: boolean;
+    includeWidePaths?: boolean;
 }
 
 interface GameMap {

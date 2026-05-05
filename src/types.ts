@@ -7,14 +7,14 @@ export enum PathfindingAlgorithm {
 
 /**
  * Re-export of the upstream PathNavigationOptions shape so callers don't need
- * an ambient global. Each option is opt-in: a missing or false value preserves
- * the navigator's default loose behavior.
+ * an ambient global. Each option is opt-in: a missing or false value excludes
+ * that path type, and must be set to true to include it.
  */
 export interface PathNavigationOptions {
     respectBanners?: boolean;
-    excludeGhosts?: boolean;
-    excludeQueues?: boolean;
-    excludeWidePaths?: boolean;
+    includeGhosts?: boolean;
+    includeQueues?: boolean;
+    includeWidePaths?: boolean;
 }
 
 export interface PathfindingOptions {
