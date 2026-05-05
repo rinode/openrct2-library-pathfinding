@@ -11,9 +11,7 @@ Pathfinding algorithms for OpenRCT2 plugins, built on the PathNavigator API.
 
 Each algorithm is async and splits its work across game ticks using a time budget.
 
-All four accept an optional precomputed `JunctionGraph`. When supplied, the search runs on a corridor-contracted graph (junctions are nodes, corridors collapse into weighted edges) instead of walking tile by tile. Fast on sparse networks with long corridors, at the cost of one build pass.
-
-This is the 4-connected analog of [Steve Rabin's JPS+](https://gdcvault.com/play/1022094/JPS-Over-100x-Faster-than). Footpaths have no diagonals, so classic JPS/JPS+ forced-neighbor pruning does not apply. Corridor contraction gets the equivalent win.
+All four accept an optional precomputed `JunctionGraph`. When supplied, the search runs on a junction graph (contracts long corridors into single edges) instead of walking tile by tile. Speeds up searches on large, sparse networks at the cost of one build pass.
 
 ## Install
 
@@ -85,7 +83,7 @@ const summary = await guidePeeps(map.getAllEntities("guest"), dest, {
 // summary: { dispatched, arrived, stuck, removed, cancelled, noPath, noStart }
 ```
 
-Why batched planning is cheap: one reverse Dijkstra rooted at `dest` gives every reachable peep its shortest path in a single pass, so per-peep work is just path reconstruction. Planning and dispatch are tick-distributed via the same `budgetMs` used by the search algorithms — large batches don't block the frame.
+Batched planning is efficient: one reverse Dijkstra computes paths for all peeps in a single pass. Work is tick-distributed, so large batches don't block the frame.
 
 The library also exports `peepFootpathTile(peep)`, which snaps a peep's `(x, y, z)` to the footpath tile at its feet (or returns `null` if the peep isn't on a footpath).
 
@@ -95,12 +93,12 @@ The library also exports `peepFootpathTile(peep)`, which snaps a peep's `(x, y, 
 
 | Option | Default | Units | Meaning |
 |--------|---------|-------|---------|
-| `noProgressTimeoutTicks` | `120` | ticks | Ticks of no forward progress (distance to the current waypoint not decreasing by more than 1 unit) before declaring stuck. Transient stalls — crowded paths, brief idle — reset this as soon as the peep makes progress again. |
-| `waypointTimeoutTicks` | `600` | ticks | Absolute upper bound on ticks at a single waypoint, regardless of progress. Guards against a peep making infinitesimal progress forever. |
-| `arrivalThreshold` | `5` | game units | Distance at which a waypoint counts as reached. |
-| `debugStuck` | `false` | — | Log per-tick diagnostics and a summary at the moment `stuck` fires showing whether `peep.destination` was overwritten by the native AI. Off by default — turn on only while investigating a stuck-storm. |
+| `noProgressTimeoutTicks` | `120` | ticks | No forward progress before stuck (distance not changing). Resets when peep moves again. |
+| `waypointTimeoutTicks` | `600` | ticks | Max ticks at one waypoint before stuck (hard limit). |
+| `arrivalThreshold` | `5` | game units | Distance to count as reached. |
+| `debugStuck` | `false` | - | Log diagnostics when stuck fires. Off by default. |
 
-Progress-based detection is the primary signal; the absolute timeout is a safety net. At 25 ticks/sec the defaults give ~4.8s of no progress or ~24s total at one waypoint before giving up.
+With defaults at 25 ticks/sec: ~4.8s for no-progress timeout, ~24s for absolute timeout.
 
 ## API
 
