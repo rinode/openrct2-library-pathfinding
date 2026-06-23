@@ -1,11 +1,22 @@
 // Type augmentation for PathNavigator API (not yet in @openrct2/types).
 interface PathConnection {
-    position: CoordsXYZ;
+    readonly position: CoordsXYZ;
+    readonly elementIndex: number;
+    readonly direction: Direction | null;
+    readonly isSloped: boolean;
+    readonly slopeDirection: Direction | null;
+    readonly isQueue: boolean;
+    readonly isWide: boolean;
+    readonly ride: number | null;
+    readonly station: number | null;
 }
 
 interface PathNavigator {
-    current: PathConnection;
+    readonly current: PathConnection;
+    readonly edges: number;
+    readonly permittedEdges: number;
     getConnectedPaths(): PathConnection[];
+    moveTo(direction: Direction): boolean;
 }
 
 interface PathNavigationOptions {
@@ -16,5 +27,6 @@ interface PathNavigationOptions {
 }
 
 interface GameMap {
+    getPathNavigator(location: CoordsXY, elementIndex: number, options?: PathNavigationOptions): PathNavigator | null;
     getPathNavigator(position: CoordsXYZ, options?: PathNavigationOptions): PathNavigator | null;
 }

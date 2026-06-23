@@ -1,6 +1,6 @@
 {
   "name": "openrct2-library-pathfinding",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pathfinding algorithms for OpenRCT2 plugins (A*, Dijkstra, BFS, Greedy Best-First)",
   "type": "module",
   "main": "./dist/index.js",
